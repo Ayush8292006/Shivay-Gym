@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-main: #0E0E0E;
+    --surface-main: #161616;
+    --surface-light: #1E1E1E;
+    --border-main: #2A2A2A;
+    --text-primary: #F2F2F2;
+    --text-secondary: #9A9A9A;
+    --accent: #E8590C;
+    --accent-hover: #D04F0A;
+  }
+
+  .light {
+    --bg-main: #FAFAFA;
+    --surface-main: #FFFFFF;
+    --surface-light: #F2F2F2;
+    --border-main: #E2E2E2;
+    --text-primary: #171717;
+    --text-secondary: #6B7280;
+    --accent: #E8590C;
+    --accent-hover: #D04F0A;
+  }
+
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, .font-heading {
+    font-family: 'Barlow Condensed', sans-serif;
+    letter-spacing: 0.03em;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #121212;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2a2a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3e3e3e;
+}
+
+/* Print styling for receipts & invoices */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}
+
