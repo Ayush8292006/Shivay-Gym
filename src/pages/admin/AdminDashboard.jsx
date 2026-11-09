@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGym } from '../../context/GymContext';
+import { isoFromToday, currentMonthLabel, formatDate } from '../../utils/dates';
 import StatCard from '../../components/common/StatCard';
 import Badge from '../../components/common/Badge';
 import Avatar from '../../components/common/Avatar';
@@ -54,11 +55,14 @@ export default function AdminDashboard() {
   const totalPendingDues = duesPendingList.reduce((acc, m) => acc + (m.duesPending || 0), 0);
 
   // Current month revenue
-  const thisMonthRevenue = 495000; // Nov 2024
-  const newJoinsThisMonth = 30;
+  const thisMonthRevenue = monthlyRevenueHistory[monthlyRevenueHistory.length - 1]?.revenue || 0;
+  const monthPrefix = isoFromToday(0).slice(0, 7);
+  // Seed history count + any member added through the app this month
+  const addedInApp = members.filter(m => m.addedInApp && (m.joinDate || '').startsWith(monthPrefix)).length;
+  const newJoinsThisMonth = (monthlyRevenueHistory[monthlyRevenueHistory.length - 1]?.newJoins || 0) + addedInApp;
 
   // Inactive 7+ days (Active status but lastVisit was earlier or streak 0)
-  const inactiveMembers = members.filter(m => m.status === 'Active' && m.attendanceStreak === 0).slice(0, 5);
+  const inactiveMembers = members.filter(m => m.status === 'Active' && (!m.lastVisit || m.lastVisit < isoFromToday(-7))).slice(0, 5);
 
   // Plan distribution for Pie Chart
   const planDistribution = [
@@ -140,7 +144,7 @@ export default function AdminDashboard() {
           onClick={() => navigate('/admin/attendance')}
         />
         <StatCard
-          label="Revenue (Nov MTD)"
+          label={`Revenue (${currentMonthLabel().split(' ')[0]} MTD)`}
           value={`₹${(thisMonthRevenue / 1000).toFixed(0)}k`}
           subtext="Gross collection"
           change="+18% YoY"
@@ -320,7 +324,7 @@ export default function AdminDashboard() {
                   <Avatar name={m.name} size="sm" />
                   <div>
                     <div className="text-xs font-semibold text-[#F2F2F2]">{m.name}</div>
-                    <div className="text-[11px] text-[#9A9A9A]">Expires: {m.expiryDate} • {m.plan}</div>
+                    <div className="text-[11px] text-[#9A9A9A]">Expires: {formatDate(m.expiryDate)} • {m.plan}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -331,7 +335,8 @@ export default function AdminDashboard() {
                         recipientId: m.id,
                         recipientName: m.name,
                         recipientPhone: m.phone,
-                        text: `Hi ${m.name}, your Shivay Gym membership expires on ${m.expiryDate}. Renew today!`,
+                        text: `Hi ${m.name.split(' ')[0]}, your SHIVAY GYM ${m.plan} membership expires on ${formatDate(m.expiryDate)}. Renew today to keep your streak going!`,
+                        automationId: 'AUTO-EXPIRY-7D',
                         automationTitle: 'Expiry Alert'
                       });
                     }}
@@ -362,7 +367,8 @@ export default function AdminDashboard() {
                         recipientId: m.id,
                         recipientName: m.name,
                         recipientPhone: m.phone,
-                        text: `Dear ${m.name}, reminder that ₹${m.duesPending} is pending against your Shivay Gym account.`,
+                        text: `Dear ${m.name.split(' ')[0]}, a gentle reminder that ₹${m.duesPending} is pending on your SHIVAY GYM account. You can pay by UPI or at reception. Thank you!`,
+                        automationId: 'AUTO-PAYMENT-DUE',
                         automationTitle: 'Dues Alert'
                       });
                     }}
@@ -393,7 +399,8 @@ export default function AdminDashboard() {
                         recipientId: m.id,
                         recipientName: m.name,
                         recipientPhone: m.phone,
-                        text: `Hey ${m.name}, we haven't seen you at Shivay Gym this week! Let's get a light session in today.`,
+                        text: `Hey ${m.name.split(' ')[0]}, we haven't seen you at SHIVAY GYM this week! Even a light 30-minute session today will get your momentum back.`,
+                        automationId: 'AUTO-INACTIVE-7D',
                         automationTitle: 'Inactivity Nudge'
                       });
                     }}

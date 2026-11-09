@@ -24,6 +24,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
+import { isoFromToday } from '../../utils/dates';
 
 export default function AdminAttendance() {
   const {
@@ -48,8 +49,8 @@ export default function AdminAttendance() {
 
   // Flagged inactive members
   const inactive7Days = members.filter(m => m.status === 'Active' && m.attendanceStreak === 0);
-  const inactive15Days = members.filter(m => m.status === 'Active' && (!m.lastVisit || m.lastVisit < '2024-10-25'));
-  const inactive30Days = members.filter(m => m.status === 'Active' && (!m.lastVisit || m.lastVisit < '2024-10-10'));
+  const inactive15Days = members.filter(m => m.status === 'Active' && (!m.lastVisit || m.lastVisit < isoFromToday(-15)));
+  const inactive30Days = members.filter(m => m.status === 'Active' && (!m.lastVisit || m.lastVisit < isoFromToday(-30)));
 
   return (
     <div className="space-y-6">

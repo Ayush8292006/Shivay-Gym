@@ -4,6 +4,7 @@ import Modal from '../../components/common/Modal';
 import Badge from '../../components/common/Badge';
 import ImageFallback from '../../components/common/ImageFallback';
 import { Tag, Plus, Send, TrendingUp, IndianRupee, Calendar } from 'lucide-react';
+import { isoFromToday, formatDate } from '../../utils/dates';
 
 export default function AdminOffers() {
   const { offers, setOffers, triggerSendMessage, members, formerMembers, showToast } = useGym();
@@ -12,8 +13,8 @@ export default function AdminOffers() {
     title: '',
     discountType: 'percentage',
     discountValue: 20,
-    validFrom: '2024-11-01',
-    validTill: '2024-11-30',
+    validFrom: isoFromToday(0),
+    validTill: isoFromToday(21),
     targetAudience: 'All Members',
     planApplicable: 'Yearly Elite Strength',
     description: '',
@@ -36,20 +37,29 @@ export default function AdminOffers() {
   };
 
   const handleBroadcastOffer = (off) => {
-    const recipients = off.targetAudience.includes('Former') ? formerMembers : members.slice(0, 20);
+    const aud = String(off.targetAudience || '').toLowerCase();
+    let recipients;
+    if (aud.includes('former')) recipients = formerMembers;
+    else if (aud.includes('expir')) recipients = members.filter(m => m.status === 'Expiring Soon' || m.status === 'Expired');
+    else if (aud.includes('active')) recipients = members.filter(m => m.status === 'Active' || m.status === 'Expiring Soon');
+    else recipients = members.filter(m => m.status !== 'Left');
+    if (!recipients.length) {
+      showToast('No members in this offer\'s audience.', 'info');
+      return;
+    }
     recipients.forEach(m => {
       triggerSendMessage({
         recipientId: m.id,
         recipientName: m.name,
         recipientPhone: m.phone,
-        text: `Special Shivay Gym Offer: ${off.title}! Enjoy ${off.discountValue}${off.discountType === 'percentage' ? '%' : ' INR'} discount on ${off.planApplicable}. Valid till ${off.validTill}.`,
+        text: `Hi ${m.name.split(' ')[0]}! ${off.title} at SHIVAY GYM: ${off.discountType === 'percentage' ? `${off.discountValue}% off` : `flat ₹${off.discountValue} off`} on ${off.planApplicable}. Valid till ${formatDate(off.validTill)}. Reply to this message or visit reception to claim.`,
+        automationId: 'OFFER',
         channel: 'WhatsApp',
         automationTitle: `Promo: ${off.title}`
       });
     });
 
     setOffers(prev => prev.map(o => o.id === off.id ? { ...o, sentCount: (o.sentCount || 0) + recipients.length } : o));
-    showToast(`Offer broadcasted to ${recipients.length} recipients!`, 'success');
   };
 
   return (

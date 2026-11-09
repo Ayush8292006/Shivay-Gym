@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { useGym } from '../../context/GymContext';
 import Modal from '../../components/common/Modal';
 import Badge from '../../components/common/Badge';
-import {
-  interpolateTemplate,
-  generateWhatsAppLink,
-  dailyMorningQuotes
-} from '../../data/automations';
+import { interpolateTemplate } from '../../data/automations';
+import { buildWhatsAppLink as generateWhatsAppLink } from '../../services/whatsapp';
+import { getRecipients, buildMessage, buildUpcomingQueue, upcomingFestivals } from '../../utils/automationTargets';
+import { formatDate, daysUntil } from '../../utils/dates';
+import { Link } from 'react-router-dom';
 import {
   MessageSquareCode,
   Send,
@@ -28,22 +28,10 @@ import {
 } from 'lucide-react';
 
 /*
-  =============================================================================
-  PRODUCTION INTEGRATION NOTE (WhatsApp Business API & Scheduled Cron Jobs):
-  -----------------------------------------------------------------------------
-  To take this from prototype to live production:
-  1. WhatsApp Business Cloud API / Gupshup / Twilio:
-     Replace `triggerSendMessage()` with an API call to your backend:
-     `POST /api/v1/messages/dispatch` -> calls Meta WhatsApp Graph API:
-     `POST https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/messages`
-     with registered HSM templates (e.g. `shivay_good_morning`, `shivay_expiry_nudge`).
-  2. SMS Gateway:
-     Connect DLT-registered templates via MSG91, Textlocal, or Fast2SMS.
-  3. Scheduled Cron Tasks:
-     Deploy a Node.js / BullMQ / AWS EventBridge cron job that triggers every morning
-     at 06:00 AM IST to run the daily morning quote rotation and queries members
-     expiring in 7/3/1 days.
-  =============================================================================
+  WhatsApp delivery is handled in GymContext → triggerSendMessage().
+  Manual mode opens WhatsApp with the text ready; server mode sends through
+  /server (WhatsApp Business Cloud API) and the server also runs these
+  automations on schedule. See server/README.md.
 */
 
 export default function AdminAutomations() {
@@ -57,8 +45,14 @@ export default function AdminAutomations() {
     formerMembers,
     sentMessages,
     triggerSendMessage,
-    showToast
+    showToast,
+    whatsappConfig,
+    offers
   } = useGym();
+  const ctx = { members, formerMembers, festivalCalendar, offers };
+  const [festivalEdit, setFestivalEdit] = useState(null);
+  const [selectedFestival, setSelectedFestival] = useState(null);
+  const [logFilter, setLogFilter] = useState('');
 
   const [activeTab, setActiveTab] = useState('rules'); // 'rules', 'festivals', 'scheduled', 'logs', 'bulk'
   const [selectedAuto, setSelectedAuto] = useState(null);
@@ -108,130 +102,90 @@ export default function AdminAutomations() {
     setSendNowModalOpen(true);
   };
 
+  const sendNowRecipients = selectedAuto
+    ? getRecipients(selectedAuto, ctx, { mode: 'window', festival: selectedFestival })
+    : [];
+
   const executeSendNow = () => {
     if (!selectedAuto) return;
-
-    // Filter recipients based on automation target
-    let targetList = [];
-    if (selectedAuto.category === 'winback') {
-      targetList = formerMembers;
-    } else if (selectedAuto.id === 'AUTO-EXPIRY-7D') {
-      targetList = members.filter(m => m.status === 'Expiring Soon');
-    } else if (selectedAuto.id === 'AUTO-PAYMENT-DUE') {
-      targetList = members.filter(m => m.duesPending > 0);
-    } else if (selectedAuto.id === 'AUTO-INACTIVE-7D') {
-      targetList = members.filter(m => m.status === 'Active' && m.attendanceStreak === 0);
-    } else {
-      // General active members
-      targetList = members.filter(m => m.status === 'Active');
+    if (sendNowRecipients.length === 0) {
+      showToast('Nobody matches this automation right now.', 'info');
+      return;
     }
-
-    if (targetList.length === 0) {
-      targetList = members.slice(0, 5); // fallback sample
-    }
-
-    const template = selectedAuto.activeLanguage === 'hi' ? selectedAuto.templateHi : selectedAuto.templateEn;
-
-    targetList.forEach(m => {
-      const interpolated = interpolateTemplate(template, {
-        name: m.name,
-        plan: m.plan,
-        expiryDate: m.expiryDate,
-        daysLeft: 7,
-        amountDue: m.duesPending || 1500,
-        discount: '20%'
-      });
-
+    const channel = selectedAuto.channels.whatsapp ? 'WhatsApp' : selectedAuto.channels.push ? 'Push' : 'SMS';
+    sendNowRecipients.forEach((r) => {
       triggerSendMessage({
-        recipientId: m.id,
-        recipientName: m.name,
-        recipientPhone: m.phone,
-        text: interpolated,
-        channel: selectedAuto.channels.whatsapp ? 'WhatsApp' : 'SMS',
-        automationTitle: selectedAuto.title
+        recipientId: r.id,
+        recipientName: r.name,
+        recipientPhone: r.phone,
+        text: buildMessage(selectedAuto, r),
+        vars: r.vars,
+        channel,
+        automationId: selectedAuto.id,
+        automationTitle: selectedFestival ? `${selectedFestival.name} Wishes` : selectedAuto.title
       });
     });
-
     setSendNowModalOpen(false);
-    showToast(`Dispatched "${selectedAuto.title}" to ${targetList.length} recipients!`, 'success');
+    setSelectedFestival(null);
+  };
+
+  const sendFestivalNow = (fest) => {
+    const auto = automations.find((a) => a.id === 'AUTO-FESTIVAL');
+    if (!auto) return;
+    setSelectedFestival(fest);
+    setSelectedAuto(auto);
+    setSendNowModalOpen(true);
   };
 
   // Bulk Dispatch Handler
+  const bulkTargets = (filter) => {
+    if (filter === 'ALL_ACTIVE') return members.filter(m => m.status === 'Active' || m.status === 'Expiring Soon');
+    if (filter === 'EXPIRING') return members.filter(m => m.status === 'Expiring Soon');
+    if (filter === 'EXPIRED') return members.filter(m => m.status === 'Expired');
+    if (filter === 'FORMER') return formerMembers;
+    if (filter === 'DUES') return members.filter(m => m.duesPending > 0);
+    return members.filter(m => m.status !== 'Left');
+  };
+
   const handleBulkDispatch = (e) => {
     e.preventDefault();
 
-    let targets = [];
-    if (bulkFilter === 'ALL_ACTIVE') targets = members.filter(m => m.status === 'Active');
-    else if (bulkFilter === 'EXPIRING') targets = members.filter(m => m.status === 'Expiring Soon');
-    else if (bulkFilter === 'FORMER') targets = formerMembers;
-    else if (bulkFilter === 'DUES') targets = members.filter(m => m.duesPending > 0);
-    else targets = members;
-
+    const targets = bulkTargets(bulkFilter);
+    if (!targets.length) {
+      showToast('No members in this audience.', 'info');
+      return;
+    }
     const chosenAuto = automations.find(a => a.id === bulkTemplateId);
-    const rawTemplate = bulkCustomText.trim()
-      ? bulkCustomText
-      : (bulkLang === 'hi' ? chosenAuto?.templateHi : chosenAuto?.templateEn);
-
     targets.forEach(m => {
-      const interpolated = interpolateTemplate(rawTemplate, {
-        name: m.name,
-        plan: m.plan,
-        expiryDate: m.expiryDate,
-        amountDue: m.duesPending || 0,
-        discount: '25%'
-      });
-
+      const recipient = { vars: { name: m.name.split(' ')[0], plan: m.plan || m.lastPlan, expiryDate: m.expiryDate ? formatDate(m.expiryDate) : undefined, daysLeft: m.expiryDate ? Math.max(daysUntil(m.expiryDate), 0) : undefined, amountDue: m.duesPending || 0, discount: '25%', trainer: m.trainer } };
+      const text = bulkCustomText.trim()
+        ? interpolateTemplate(bulkCustomText, recipient.vars)
+        : buildMessage(chosenAuto, recipient, bulkLang);
       triggerSendMessage({
         recipientId: m.id,
         recipientName: m.name,
         recipientPhone: m.phone,
-        text: interpolated,
+        text,
+        vars: recipient.vars,
         channel: 'WhatsApp',
-        automationTitle: `Bulk Broadcast (${bulkFilter})`
+        automationId: bulkCustomText.trim() ? 'CUSTOM' : chosenAuto?.id,
+        automationTitle: `Bulk Broadcast (${bulkFilter.replace('_', ' ').toLowerCase()})`
       });
     });
-
-    showToast(`Bulk message dispatched to ${targets.length} recipients!`, 'success');
   };
 
-  // Upcoming simulated scheduled queue for next 30 days
-  const upcomingScheduled = [
-    {
-      date: 'Tomorrow, 06:00 AM',
-      title: 'Daily Good Morning Quote #19',
-      recipients: `${members.filter(m => m.status === 'Active').length} Active Members`,
-      channel: 'WhatsApp & App Push',
-      preview: 'Rise early, lift heavy, conquer the day. Wishing you high energy at SHIVAY GYM today!'
-    },
-    {
-      date: '10 Nov 2024, 10:30 AM',
-      title: '7-Day Expiry Reminder Batch',
-      recipients: `${members.filter(m => m.status === 'Expiring Soon').length} Members Expiring Soon`,
-      channel: 'WhatsApp & SMS',
-      preview: 'Hi {name}, your membership at SHIVAY GYM will expire in 7 days. Renew early to keep your streak!'
-    },
-    {
-      date: '12 Nov 2024, 08:00 AM',
-      title: 'Birthday Wishes Batch',
-      recipients: '2 Birthday Celebrants',
-      channel: 'WhatsApp',
-      preview: 'Happy Birthday! Team SHIVAY GYM wishes you peak health. Enjoy a FREE PT session this week!'
-    },
-    {
-      date: '15 Nov 2024, 17:00 PM',
-      title: 'Inactivity Retention Nudge',
-      recipients: '5 Inactive Members (7+ days)',
-      channel: 'WhatsApp',
-      preview: "Hey {name}, we haven't seen you at SHIVAY GYM in 7 days! Even a 30-min light workout will reset your momentum."
-    },
-    {
-      date: '15 Nov 2024, 09:00 AM',
-      title: 'Guru Nanak Jayanti Wishes & Offer',
-      recipients: 'All Members',
-      channel: 'WhatsApp',
-      preview: 'Happy Guru Nanak Jayanti {name}! May Guru Sahib bless you with peace and disciplined mind & body.'
-    }
-  ];
+  // Upcoming queue, calculated from live member data & the festival calendar
+  const upcomingScheduled = buildUpcomingQueue(automations, ctx, 30);
+  const nextFestivals = upcomingFestivals(festivalCalendar, 4);
+
+  const statusVariant = (st) => {
+    const v = String(st || '').toLowerCase();
+    if (v === 'read' || v === 'delivered') return 'success';
+    if (v === 'failed') return 'danger';
+    if (v === 'queued' || v === 'sending' || v === 'dry run') return 'warning';
+    if (v.includes('opened') || v === 'sent') return 'saffron';
+    return 'default';
+  };
 
   return (
     <div className="space-y-6">
@@ -257,6 +211,22 @@ export default function AdminAutomations() {
           <Send className="w-3.5 h-3.5" />
           Compose Bulk Broadcast
         </button>
+      </div>
+
+      {/* Delivery mode */}
+      <div className={`p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+        whatsappConfig.mode === 'server' ? 'border-[#2F9E44]/40 bg-[#142918]' : 'border-[#2A2A2A] bg-[#161616]'
+      }`}>
+        <span className="text-[#CCCCCC]">
+          <span className="font-semibold text-[#F2F2F2]">WhatsApp delivery: </span>
+          {whatsappConfig.mode === 'server'
+            ? 'Automatic via WhatsApp Business API. Scheduled automations run on the server at their set time.'
+            : 'Manual — each message opens in WhatsApp with the text ready; you press Send.'}
+          {whatsappConfig.testMode && <span className="ml-1 text-[#E8A317]">Test mode ON (messages go to your number).</span>}
+        </span>
+        <Link to="/admin/settings" className="text-[#E8590C] font-semibold whitespace-nowrap hover:underline">
+          Change delivery settings →
+        </Link>
       </div>
 
       {/* Tabs */}
@@ -294,7 +264,9 @@ export default function AdminAutomations() {
               <code className="text-[#E8590C]">{'{expiry_date}'}</code>,{' '}
               <code className="text-[#E8590C]">{'{days_left}'}</code>,{' '}
               <code className="text-[#E8590C]">{'{amount_due}'}</code>,{' '}
-              <code className="text-[#E8590C]">{'{discount}'}</code>
+              <code className="text-[#E8590C]">{'{discount}'}</code>,{' '}
+              <code className="text-[#E8590C]">{'{trainer}'}</code>,{' '}
+              <code className="text-[#E8590C]">{'{date}'}</code>
             </div>
             <span className="text-[11px] text-[#2F9E44]">All templates available in English & Hindi</span>
           </div>
@@ -378,7 +350,11 @@ export default function AdminAutomations() {
 
                     {/* Template Box */}
                     <div className="p-3 rounded bg-[#121212] border border-[#242424] text-xs text-[#CCCCCC] font-mono leading-relaxed mb-4">
-                      {templateText}
+                      {auto.id === 'AUTO-FESTIVAL'
+                        ? `Uses the greeting of each festival from the Festival Calendar. Next: ${nextFestivals[0] ? `${nextFestivals[0].name} (${formatDate(nextFestivals[0].date)})` : '—'}`
+                        : auto.id === 'AUTO-MORNING'
+                          ? `Rotates ${30}+ motivational messages. Today: “${buildMessage(auto, { vars: getRecipients(auto, ctx)[0]?.vars || { name: 'Aarav' } })}”`
+                          : templateText}
                     </div>
                   </div>
 
@@ -413,50 +389,74 @@ export default function AdminAutomations() {
       {/* TAB 2: EDITABLE FESTIVAL CALENDAR */}
       {activeTab === 'festivals' && (
         <div className="space-y-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {nextFestivals.map((f) => (
+              <div key={f.id} className="p-4 rounded-lg border border-[#2A2A2A] bg-[#161616]">
+                <div className="text-[10px] uppercase tracking-wider text-[#9A9A9A]">
+                  {f.inDays === 0 ? 'Today' : f.inDays === 1 ? 'Tomorrow' : `In ${f.inDays} days`}
+                </div>
+                <div className="font-heading text-lg font-bold uppercase text-[#F2F2F2] leading-tight mt-0.5">{f.name}</div>
+                <div className="text-xs font-mono text-[#E8590C] mt-1">{formatDate(f.date)}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="p-4 rounded-lg border border-[#2A2A2A] bg-[#161616] text-xs text-[#9A9A9A] leading-relaxed">
-            <span className="font-semibold text-[#F2F2F2]">Editable Festival Calendar (25+ Events):</span>{' '}
-            Lunar and regional festival dates change each calendar year. You can click on any festival below to edit the scheduled date, greeting text (English & Hindi), or attach an exclusive renewal offer.
+            <span className="font-semibold text-[#F2F2F2]">Wishes go out automatically at 07:00 on each date.</span>{' '}
+            Dates marked <span className="text-[#E8A317]">lunar</span> follow the Hindu / Islamic calendar and change every year —
+            please confirm them with a local panchang and edit if needed.
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-[#2A2A2A] bg-[#161616]">
-            <table className="w-full text-left text-sm border-collapse">
+            <table className="w-full text-left text-sm border-collapse min-w-[760px]">
               <thead>
                 <tr className="border-b border-[#2A2A2A] bg-[#1A1A1A] text-[#9A9A9A] text-xs uppercase tracking-wider">
                   <th className="px-4 py-3">Festival / Occasion</th>
-                  <th className="px-4 py-3">Scheduled Date</th>
+                  <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Attached Offer</th>
-                  <th className="px-4 py-3">Greeting Wish Preview</th>
-                  <th className="px-4 py-3 text-right">Action</th>
+                  <th className="px-4 py-3">Greeting</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#242424]">
-                {festivalCalendar.map((fest) => (
-                  <tr key={fest.id} className="hover:bg-[#1A1A1A] transition-colors text-xs">
-                    <td className="px-4 py-3 font-semibold text-[#F2F2F2]">{fest.name}</td>
-                    <td className="px-4 py-3 font-mono text-[#E8590C] font-medium">{fest.date}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-[#1E1E1E] text-[#9A9A9A] border border-[#2A2A2A]">
-                        {fest.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-[#2F9E44] font-medium">{fest.attachedOffer || 'Standard Greeting'}</td>
-                    <td className="px-4 py-3 text-[#9A9A9A] max-w-xs truncate">{fest.wishEn}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => {
-                          const newDate = prompt(`Update scheduled date for ${fest.name} (YYYY-MM-DD):`, fest.date);
-                          if (newDate && newDate.trim()) {
-                            updateFestivalItem(fest.id, { date: newDate.trim() });
-                          }
-                        }}
-                        className="px-2.5 py-1 rounded bg-[#1E1E1E] hover:bg-[#E8590C] hover:text-white border border-[#2A2A2A] text-xs text-[#F2F2F2] transition-colors"
-                      >
-                        Edit Date
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {[...festivalCalendar].sort((a, b) => a.date.localeCompare(b.date)).map((fest) => {
+                  const inDays = daysUntil(fest.date);
+                  const past = inDays !== null && inDays < 0;
+                  return (
+                    <tr key={fest.id} className={`hover:bg-[#1A1A1A] transition-colors text-xs ${past ? 'opacity-50' : ''}`}>
+                      <td className="px-4 py-3 font-semibold text-[#F2F2F2]">{fest.name}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <div className="font-mono text-[#E8590C] font-medium">{formatDate(fest.date)}</div>
+                        <div className="text-[10px] text-[#666666]">
+                          {past ? 'Passed — update for next year' : inDays === 0 ? 'Today' : `in ${inDays} days`}
+                          {fest.dateType === 'lunar' && <span className="text-[#E8A317]"> · lunar</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold bg-[#1E1E1E] text-[#9A9A9A] border border-[#2A2A2A]">
+                          {fest.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-[#2F9E44] font-medium">{fest.attachedOffer || 'Greeting only'}</td>
+                      <td className="px-4 py-3 text-[#9A9A9A] max-w-xs truncate">{fest.wishEn}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap space-x-1.5">
+                        <button
+                          onClick={() => setFestivalEdit({ ...fest })}
+                          className="px-2.5 py-1 rounded bg-[#1E1E1E] hover:border-[#3A3A3A] border border-[#2A2A2A] text-xs text-[#F2F2F2] transition-colors"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => sendFestivalNow(fest)}
+                          className="px-2.5 py-1 rounded bg-[#E8590C]/15 border border-[#E8590C]/40 hover:bg-[#E8590C] hover:text-white text-xs text-[#E8590C] font-semibold transition-colors"
+                        >
+                          Send now
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -471,21 +471,28 @@ export default function AdminAutomations() {
           </div>
 
           <div className="divide-y divide-[#242424] rounded-lg border border-[#2A2A2A] bg-[#161616]">
+            {upcomingScheduled.length === 0 && (
+              <div className="p-6 text-center text-xs text-[#9A9A9A]">No scheduled sends in the next 30 days.</div>
+            )}
             {upcomingScheduled.map((item, idx) => (
               <div key={idx} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-[#E8590C] font-semibold">{item.date}</span>
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[#E8590C] font-semibold whitespace-nowrap">
+                      {item.offset === 1 ? 'Tomorrow' : formatDate(item.date)}, {item.time}
+                    </span>
                     <span className="text-[#666666]">•</span>
                     <span className="font-bold text-[#F2F2F2]">{item.title}</span>
                   </div>
-                  <p className="text-[#9A9A9A] font-mono">{item.preview}</p>
+                  <p className="text-[#9A9A9A] truncate">{item.preview}</p>
                 </div>
-                <div className="text-right sm:flex-shrink-0">
+                <div className="sm:text-right sm:flex-shrink-0">
                   <span className="inline-block px-2 py-0.5 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-[11px] text-[#2F9E44] font-medium">
-                    {item.recipients}
+                    {item.count} recipient{item.count > 1 ? 's' : ''}
                   </span>
-                  <div className="text-[10px] text-[#666666] mt-0.5">{item.channel}</div>
+                  <div className="text-[10px] text-[#666666] mt-0.5">
+                    {[item.auto.channels.whatsapp && 'WhatsApp', item.auto.channels.push && 'App inbox'].filter(Boolean).join(' & ')}
+                  </div>
                 </div>
               </div>
             ))}
@@ -498,7 +505,12 @@ export default function AdminAutomations() {
         <div className="space-y-4">
           <div className="p-4 rounded-lg border border-[#2A2A2A] bg-[#161616] flex items-center justify-between text-xs text-[#9A9A9A]">
             <span>Total Messages Dispatched: <strong className="text-[#F2F2F2]">{sentMessages.length}</strong></span>
-            <span className="text-[#2F9E44]">WhatsApp Status: Connected (Simulation)</span>
+            <input
+              value={logFilter}
+              onChange={(e) => setLogFilter(e.target.value)}
+              placeholder="Search name or text..."
+              className="px-3 py-1.5 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none w-48"
+            />
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-[#2A2A2A] bg-[#161616]">
@@ -515,7 +527,10 @@ export default function AdminAutomations() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#242424]">
-                {sentMessages.map((msg) => (
+                {sentMessages
+                  .filter((msg) => !logFilter || `${msg.recipientName} ${msg.text} ${msg.automationTitle}`.toLowerCase().includes(logFilter.toLowerCase()))
+                  .slice(0, 200)
+                  .map((msg) => (
                   <tr key={msg.id} className="hover:bg-[#1A1A1A] transition-colors text-xs">
                     <td className="px-4 py-3 font-mono text-[#9A9A9A] whitespace-nowrap">{msg.sentAt}</td>
                     <td className="px-4 py-3">
@@ -526,7 +541,8 @@ export default function AdminAutomations() {
                     <td className="px-4 py-3 font-medium text-[#F2F2F2]">{msg.channel}</td>
                     <td className="px-4 py-3 text-[#CCCCCC] max-w-xs truncate font-mono">{msg.text}</td>
                     <td className="px-4 py-3">
-                      <Badge variant="success">{msg.status || 'Delivered'}</Badge>
+                      <Badge variant={statusVariant(msg.status)}>{msg.status || 'Delivered'}</Badge>
+                      {msg.error && <div className="text-[10px] text-[#E03131] mt-1 max-w-[180px] truncate" title={msg.error}>{msg.error}</div>}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {msg.recipientPhone && (
@@ -567,11 +583,12 @@ export default function AdminAutomations() {
                   onChange={(e) => setBulkFilter(e.target.value)}
                   className="w-full px-3 py-2 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none"
                 >
-                  <option value="ALL_ACTIVE">All Active Members ({members.filter(m => m.status === 'Active').length})</option>
-                  <option value="EXPIRING">Expiring in 7 Days ({members.filter(m => m.status === 'Expiring Soon').length})</option>
-                  <option value="FORMER">Former Members ({formerMembers.length})</option>
-                  <option value="DUES">Members with Balance Dues ({members.filter(m => m.duesPending > 0).length})</option>
-                  <option value="ALL">Entire Member Directory ({members.length})</option>
+                  <option value="ALL_ACTIVE">All Active Members ({bulkTargets('ALL_ACTIVE').length})</option>
+                  <option value="EXPIRING">Expiring in 7 Days ({bulkTargets('EXPIRING').length})</option>
+                  <option value="EXPIRED">Expired, not renewed ({bulkTargets('EXPIRED').length})</option>
+                  <option value="FORMER">Former Members ({bulkTargets('FORMER').length})</option>
+                  <option value="DUES">Members with Balance Dues ({bulkTargets('DUES').length})</option>
+                  <option value="ALL">Entire Member Directory ({bulkTargets('ALL').length})</option>
                 </select>
               </div>
 
@@ -625,12 +642,12 @@ export default function AdminAutomations() {
             <div className="p-3 rounded bg-[#121212] border border-[#242424] text-xs text-[#9A9A9A]">
               <span className="font-semibold text-[#F2F2F2]">Preview with sample member:</span>
               <p className="mt-1 font-mono text-[#E8590C]">
-                {interpolateTemplate(
-                  bulkCustomText.trim()
-                    ? bulkCustomText
-                    : (bulkLang === 'hi' ? automations.find(a => a.id === bulkTemplateId)?.templateHi : automations.find(a => a.id === bulkTemplateId)?.templateEn),
-                  { name: 'Aarav Sharma', plan: 'Yearly Elite Strength', expiryDate: '15 Jan 2025', daysLeft: 7, amountDue: 1500, discount: '20%' }
-                )}
+                {(() => {
+                  const sample = bulkTargets(bulkFilter)[0] || members[0];
+                  const vars = { name: sample?.name?.split(' ')[0], plan: sample?.plan || sample?.lastPlan, expiryDate: sample?.expiryDate ? formatDate(sample.expiryDate) : undefined, daysLeft: sample?.expiryDate ? Math.max(daysUntil(sample.expiryDate), 0) : undefined, amountDue: sample?.duesPending || 0, discount: '25%', trainer: sample?.trainer };
+                  const auto = automations.find(a => a.id === bulkTemplateId);
+                  return bulkCustomText.trim() ? interpolateTemplate(bulkCustomText, vars) : buildMessage(auto, { vars }, bulkLang);
+                })()}
               </p>
             </div>
 
@@ -638,7 +655,7 @@ export default function AdminAutomations() {
               type="submit"
               className="w-full py-3 rounded bg-[#E8590C] hover:bg-[#D04F0A] text-white text-xs font-semibold uppercase tracking-wider transition-colors shadow-lg shadow-[#E8590C]/20"
             >
-              Confirm & Dispatch Broadcast Now
+              Send to {bulkTargets(bulkFilter).length} member{bulkTargets(bulkFilter).length === 1 ? '' : 's'} on WhatsApp
             </button>
           </form>
         </div>
@@ -746,31 +763,35 @@ export default function AdminAutomations() {
       {/* SEND NOW CONFIRMATION MODAL */}
       <Modal
         isOpen={sendNowModalOpen}
-        onClose={() => setSendNowModalOpen(false)}
-        title={`Trigger Immediate Dispatch: ${selectedAuto?.title}`}
+        onClose={() => { setSendNowModalOpen(false); setSelectedFestival(null); }}
+        title={selectedFestival ? `Send ${selectedFestival.name} wishes` : `Send now: ${selectedAuto?.title}`}
         subtitle={`Target Audience: ${selectedAuto?.targetAudience}`}
       >
         <div className="space-y-4 text-xs">
           <div className="p-3 bg-[#1A1A1A] rounded border border-[#2A2A2A] space-y-2">
-            <span className="text-[#9A9A9A]">Interpolated Live Preview:</span>
-            <div className="p-3 bg-[#121212] rounded border border-[#242424] text-[#F2F2F2] font-mono leading-relaxed">
-              {interpolateTemplate(
-                selectedAuto?.activeLanguage === 'hi' ? selectedAuto?.templateHi : selectedAuto?.templateEn,
-                {
-                  name: members[previewMemberIndex]?.name || 'Aarav Sharma',
-                  plan: members[previewMemberIndex]?.plan || 'Yearly Elite Strength',
-                  expiryDate: members[previewMemberIndex]?.expiryDate || '15 Jan 2025',
-                  daysLeft: 7,
-                  amountDue: 1500,
-                  discount: '20%'
-                }
-              )}
+            <span className="text-[#9A9A9A]">
+              Preview{sendNowRecipients[0] ? ` for ${sendNowRecipients[0].name}` : ''}:
+            </span>
+            <div className="p-3 bg-[#121212] rounded border border-[#242424] text-[#F2F2F2] leading-relaxed whitespace-pre-line">
+              {sendNowRecipients[0]
+                ? buildMessage(selectedAuto, sendNowRecipients[0])
+                : 'No member matches this automation today.'}
             </div>
           </div>
 
-          <div className="flex items-center justify-between text-[#9A9A9A]">
-            <span>Channel: {selectedAuto?.channels.whatsapp ? 'WhatsApp API' : 'SMS Gateway'}</span>
-            <span>Language: {selectedAuto?.activeLanguage === 'hi' ? 'Hindi' : 'English'}</span>
+          <div>
+            <div className="flex items-center justify-between text-[#9A9A9A] mb-1.5">
+              <span className="font-semibold text-[#F2F2F2]">{sendNowRecipients.length} recipient{sendNowRecipients.length === 1 ? '' : 's'}</span>
+              <span>
+                {selectedAuto?.channels.whatsapp ? 'WhatsApp' : 'App inbox'} · {selectedAuto?.activeLanguage === 'hi' ? 'Hindi' : 'English'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {sendNowRecipients.slice(0, 40).map((r) => (
+                <span key={r.id} className="px-2 py-0.5 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-[#CCCCCC]">{r.name}</span>
+              ))}
+              {sendNowRecipients.length > 40 && <span className="text-[#9A9A9A]">+{sendNowRecipients.length - 40} more</span>}
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#2A2A2A]">
@@ -784,12 +805,92 @@ export default function AdminAutomations() {
             <button
               type="button"
               onClick={executeSendNow}
-              className="px-5 py-2 text-xs font-semibold uppercase tracking-wider rounded-lg bg-[#E8590C] hover:bg-[#D04F0A] text-white transition-colors"
+              disabled={sendNowRecipients.length === 0}
+              className="disabled:opacity-40 px-5 py-2 text-xs font-semibold uppercase tracking-wider rounded-lg bg-[#E8590C] hover:bg-[#D04F0A] text-white transition-colors"
             >
               Confirm Dispatch
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* FESTIVAL EDIT MODAL */}
+      <Modal
+        isOpen={!!festivalEdit}
+        onClose={() => setFestivalEdit(null)}
+        title={`Edit: ${festivalEdit?.name || ''}`}
+        subtitle="Greeting is sent automatically at 07:00 on this date"
+      >
+        {festivalEdit && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const { id, ...fields } = festivalEdit;
+              updateFestivalItem(id, fields);
+              setFestivalEdit(null);
+            }}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs uppercase font-medium text-[#9A9A9A] mb-1">Date</label>
+                <input
+                  type="date"
+                  required
+                  value={festivalEdit.date}
+                  onChange={(e) => setFestivalEdit({ ...festivalEdit, date: e.target.value })}
+                  className="w-full px-3 py-2 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs uppercase font-medium text-[#9A9A9A] mb-1">Attached offer (optional)</label>
+                <input
+                  type="text"
+                  value={festivalEdit.attachedOffer || ''}
+                  onChange={(e) => setFestivalEdit({ ...festivalEdit, attachedOffer: e.target.value })}
+                  placeholder="e.g. 20% off on Yearly Plan"
+                  className="w-full px-3 py-2 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs uppercase font-medium text-[#9A9A9A] mb-1">Greeting (English)</label>
+              <textarea
+                rows={3}
+                required
+                value={festivalEdit.wishEn}
+                onChange={(e) => setFestivalEdit({ ...festivalEdit, wishEn: e.target.value })}
+                className="w-full px-3 py-2 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs uppercase font-medium text-[#9A9A9A] mb-1">Greeting (हिन्दी)</label>
+              <textarea
+                rows={3}
+                required
+                value={festivalEdit.wishHi}
+                onChange={(e) => setFestivalEdit({ ...festivalEdit, wishHi: e.target.value })}
+                className="w-full px-3 py-2 rounded bg-[#1E1E1E] border border-[#2A2A2A] text-xs text-[#F2F2F2] focus:border-[#E8590C] focus:outline-none"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-[#CCCCCC]">
+              <input
+                type="checkbox"
+                checked={festivalEdit.autoSchedule !== false}
+                onChange={(e) => setFestivalEdit({ ...festivalEdit, autoSchedule: e.target.checked })}
+              />
+              Send automatically on this date
+            </label>
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#2A2A2A]">
+              <button type="button" onClick={() => setFestivalEdit(null)} className="px-4 py-2 text-xs rounded-lg border border-[#2A2A2A] bg-[#1E1E1E] text-[#9A9A9A]">
+                Cancel
+              </button>
+              <button type="submit" className="px-5 py-2 text-xs font-semibold uppercase tracking-wider rounded-lg bg-[#E8590C] hover:bg-[#D04F0A] text-white">
+                Save
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>
     </div>
   );

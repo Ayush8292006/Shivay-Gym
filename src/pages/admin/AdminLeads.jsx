@@ -5,6 +5,7 @@ import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import { generateWhatsAppLink } from '../../data/automations';
 import { UserPlus, UserCheck, Phone, Plus, Send, Calendar, CheckCircle2 } from 'lucide-react';
+import { isoFromToday } from '../../utils/dates';
 
 export default function AdminLeads() {
   const { leads, addLead, convertLeadToMember, plans, trainers, showToast } = useGym();
@@ -20,7 +21,7 @@ export default function AdminLeads() {
     interest: 'Yearly Elite Strength',
     source: 'Walk-in',
     assignedTrainer: 'Vikram Chauhan',
-    followUpDate: '2024-11-12',
+    followUpDate: isoFromToday(3),
     notes: ''
   });
 
@@ -35,7 +36,7 @@ export default function AdminLeads() {
       interest: 'Yearly Elite Strength',
       source: 'Walk-in',
       assignedTrainer: 'Vikram Chauhan',
-      followUpDate: '2024-11-12',
+      followUpDate: isoFromToday(3),
       notes: ''
     });
   };

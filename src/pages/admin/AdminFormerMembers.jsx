@@ -15,6 +15,7 @@ import {
   Calendar,
   AlertCircle
 } from 'lucide-react';
+import { isoFromToday, formatDate } from '../../utils/dates';
 
 export default function AdminFormerMembers() {
   const { formerMembers, triggerSendMessage, showToast } = useGym();
@@ -22,7 +23,7 @@ export default function AdminFormerMembers() {
   const [campaignModalOpen, setCampaignModalOpen] = useState(false);
   const [selectedFormer, setSelectedFormer] = useState(null);
   const [discountPercent, setDiscountPercent] = useState('25%');
-  const [campaignValidity, setCampaignValidity] = useState('30 Nov 2024');
+  const [campaignValidity, setCampaignValidity] = useState(formatDate(isoFromToday(21)));
   const [targetScope, setTargetScope] = useState('all'); // 'all' or 'single'
 
   const [customMsgModalOpen, setCustomMsgModalOpen] = useState(false);
@@ -38,7 +39,7 @@ export default function AdminFormerMembers() {
     recipients.forEach(mem => {
       const template = "Hi {name}, we miss your energy at SHIVAY GYM! It's time for a fresh start. Use special code RESTART to get {discount} off on any 3, 6, or 12-month plan. Valid till {date}. Let's get lifting again!";
       const filledText = interpolateTemplate(template, {
-        name: mem.name,
+        name: mem.name.split(' ')[0],
         discount: discountPercent,
         date: campaignValidity
       });
@@ -49,12 +50,13 @@ export default function AdminFormerMembers() {
         recipientPhone: mem.phone,
         text: filledText,
         channel: 'WhatsApp',
+        automationId: 'AUTO-WINBACK',
+        vars: { name: mem.name.split(' ')[0], discount: discountPercent, date: campaignValidity },
         automationTitle: 'Former Member Win-Back Campaign'
       });
     });
 
     setCampaignModalOpen(false);
-    showToast(`Win-back offers dispatched to ${recipients.length} former members!`, 'success');
   };
 
   const columns = [

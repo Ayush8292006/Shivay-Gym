@@ -14,7 +14,7 @@ export default function LandingLayout() {
       <QuickNavSwitcher />
 
       {/* Website Header */}
-      <header className="sticky top-10 z-30 w-full border-b border-[#2A2A2A] bg-[#0E0E0E]/90 backdrop-blur-md">
+      <header className="sticky top-14 z-30 w-full border-b border-[#2A2A2A] bg-[#0E0E0E]/90 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 rounded bg-[#E8590C] flex items-center justify-center font-heading font-bold text-white text-lg">

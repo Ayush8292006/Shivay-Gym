@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GymProvider } from './context/GymContext';
 import Toast from './components/common/Toast';
+import WhatsAppQueue from './components/common/WhatsAppQueue';
 
 // Layouts
 import LandingLayout from './layouts/LandingLayout';
@@ -93,6 +94,7 @@ export default function App() {
 
         {/* Global Floating Toast */}
         <Toast />
+        <WhatsAppQueue />
       </BrowserRouter>
     </GymProvider>
   );

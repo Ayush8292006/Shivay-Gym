@@ -16,8 +16,8 @@ export default function QuickNavSwitcher() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-[#2A2A2A] bg-[#0E0E0E]/95 backdrop-blur-md px-3 py-2 text-xs select-none">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+      <header className="sticky top-0 z-40 w-full h-14 flex items-center border-b border-[#2A2A2A] bg-[#0E0E0E]/95 backdrop-blur-md px-3 text-xs select-none">
+        <div className="w-full max-w-7xl mx-auto flex items-center justify-between gap-1.5 sm:gap-2 min-w-0">
           {/* Brand Logo & Tag */}
           <div className="flex items-center gap-2">
             <button
@@ -25,7 +25,8 @@ export default function QuickNavSwitcher() {
               className="flex items-center gap-1.5 font-heading text-base font-bold tracking-wider uppercase text-[#F2F2F2] hover:text-[#E8590C] transition-colors"
             >
               <span className="w-2.5 h-2.5 rounded-full bg-[#E8590C] inline-block"></span>
-              SHIVAY GYM
+              <span className="sm:hidden">SHIVAY</span>
+              <span className="hidden sm:inline">SHIVAY GYM</span>
             </button>
             <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold bg-[#1E1E1E] text-[#9A9A9A] border border-[#2A2A2A]">
               Prototype Mode
@@ -37,7 +38,7 @@ export default function QuickNavSwitcher() {
             <NavLink
               to="/"
               className={({ isActive }) =>
-                `flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium text-xs transition-colors ${
+                `flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium text-xs whitespace-nowrap transition-colors ${
                   isActive
                     ? 'bg-[#E8590C] text-white shadow-sm'
                     : 'text-[#9A9A9A] hover:text-[#F2F2F2] hover:bg-[#1E1E1E]'
@@ -45,13 +46,14 @@ export default function QuickNavSwitcher() {
               }
             >
               <Globe className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Public</span> Website
+              <span className="sm:hidden">Site</span>
+              <span className="hidden sm:inline"><span className="hidden md:inline">Public </span>Website</span>
             </NavLink>
 
             <NavLink
               to="/admin"
               className={() =>
-                `flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium text-xs transition-colors ${
+                `flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium text-xs whitespace-nowrap transition-colors ${
                   isAdmin
                     ? 'bg-[#E8590C] text-white shadow-sm'
                     : 'text-[#9A9A9A] hover:text-[#F2F2F2] hover:bg-[#1E1E1E]'
@@ -65,7 +67,7 @@ export default function QuickNavSwitcher() {
             <NavLink
               to="/member"
               className={() =>
-                `flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium text-xs transition-colors ${
+                `flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium text-xs whitespace-nowrap transition-colors ${
                   isMember
                     ? 'bg-[#E8590C] text-white shadow-sm'
                     : 'text-[#9A9A9A] hover:text-[#F2F2F2] hover:bg-[#1E1E1E]'
@@ -73,7 +75,7 @@ export default function QuickNavSwitcher() {
               }
             >
               <Smartphone className="w-3.5 h-3.5" />
-              Member App
+              Member<span className="hidden sm:inline"> App</span>
             </NavLink>
           </nav>
 
@@ -118,7 +120,9 @@ export default function QuickNavSwitcher() {
             </button>
 
             {/* Theme Toggle */}
-            <ThemeToggle />
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
           </div>
         </div>
       </header>

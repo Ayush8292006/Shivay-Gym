@@ -159,7 +159,7 @@ export default function AdminLayout() {
         </aside>
 
         {/* Mobile Header */}
-        <div className="lg:hidden fixed top-10 left-0 right-0 z-30 flex items-center justify-between px-4 h-12 bg-[#121212] border-b border-[#2A2A2A]">
+        <div className="lg:hidden fixed top-14 left-0 right-0 z-30 flex items-center justify-between px-4 h-12 bg-[#121212] border-b border-[#2A2A2A]">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -248,7 +248,7 @@ export default function AdminLayout() {
         )}
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto pt-14 lg:pt-0 pb-16 lg:pb-8 p-4 sm:p-6 lg:p-8 bg-[#0E0E0E]">
+        <main className="flex-1 min-w-0 overflow-y-auto px-4 sm:px-6 lg:px-8 pt-16 lg:pt-8 pb-20 lg:pb-10 bg-[#0E0E0E]">
           <div className="max-w-7xl mx-auto">
             <Outlet />
           </div>

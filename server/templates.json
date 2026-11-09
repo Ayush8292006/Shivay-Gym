@@ -1,0 +1,19 @@
+{
+  "_readme": "Map each automation to a template APPROVED in Meta WhatsApp Manager. 'params' are filled in order into {{1}}, {{2}}... of the template body. Available values: name, plan, expiryDate, daysLeft, amountDue, discount, date, trainer, festivalName, festivalOffer, quote. Leave 'name' empty to send plain text instead (only works within 24h after the member messaged you). Sample template bodies to submit are in server/README.md.",
+  "AUTO-MORNING": { "name": "", "language": "en", "params": ["name", "quote"], "hi": { "name": "", "language": "hi" } },
+  "AUTO-EXPIRY-7D": { "name": "", "language": "en", "params": ["name", "plan", "expiryDate"] },
+  "AUTO-EXPIRY-3D": { "name": "", "language": "en", "params": ["name", "daysLeft", "expiryDate"] },
+  "AUTO-EXPIRY-1D": { "name": "", "language": "en", "params": ["name", "expiryDate"] },
+  "AUTO-EXPIRY-0D": { "name": "", "language": "en", "params": ["name", "plan"] },
+  "AUTO-EXPIRY-POST3D": { "name": "", "language": "en", "params": ["name"] },
+  "AUTO-WINBACK": { "name": "", "language": "en", "params": ["name", "discount", "date"] },
+  "AUTO-BIRTHDAY": { "name": "", "language": "en", "params": ["name"] },
+  "AUTO-ANNIVERSARY": { "name": "", "language": "en", "params": ["name"] },
+  "AUTO-INACTIVE-7D": { "name": "", "language": "en", "params": ["name"] },
+  "AUTO-PAYMENT-DUE": { "name": "", "language": "en", "params": ["name", "amountDue"] },
+  "AUTO-WELCOME": { "name": "", "language": "en", "params": ["name"] },
+  "AUTO-FESTIVAL": { "name": "", "language": "en", "params": ["name", "festivalName", "festivalOffer"] },
+  "AUTO-HOLIDAY": { "name": "", "language": "en", "params": ["date", "occasion"] },
+  "OFFER": { "name": "", "language": "en", "params": ["name"] },
+  "TEST": { "name": "hello_world", "language": "en_US", "params": [] }
+}

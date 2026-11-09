@@ -12,6 +12,7 @@ import {
   Line
 } from 'recharts';
 import { Download, TrendingUp, Users, ArrowUpRight, CheckCircle2 } from 'lucide-react';
+import { currentMonthLabel } from '../../utils/dates';
 
 export default function AdminReports() {
   const { members, formerMembers, monthlyRevenueHistory } = useGym();
@@ -39,7 +40,7 @@ export default function AdminReports() {
       ['Total Active Members', activeCount],
       ['Retention Rate', `${retentionRate}%`],
       ['Churn Rate', `${churnRate}%`],
-      ['November 2024 Revenue', '₹4,95,000'],
+      [`${currentMonthLabel(true)} Revenue`, '₹4,95,000'],
       ['Total Former Members', churnedCount]
     ].map(e => e.join(',')).join('\n');
 

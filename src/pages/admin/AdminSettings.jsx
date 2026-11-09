@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useGym } from '../../context/GymContext';
 import ThemeToggle from '../../components/common/ThemeToggle';
+import WhatsAppSettings from '../../components/admin/WhatsAppSettings';
 import { Settings, Save, RotateCcw, Building, Phone, Clock, ShieldCheck } from 'lucide-react';
 
 export default function AdminSettings() {
@@ -48,6 +49,8 @@ export default function AdminSettings() {
           Reset All Prototype Data
         </button>
       </div>
+
+      <WhatsAppSettings />
 
       <form onSubmit={handleSave} className="space-y-6">
         {/* Business Info */}

@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts';
+import { rebaseText } from '../../utils/dates';
 
 export default function MemberProgress() {
   const { currentMember, showToast } = useGym();
@@ -22,10 +23,10 @@ export default function MemberProgress() {
   ]);
 
   const [personalRecords, setPersonalRecords] = useState([
-    { lift: 'Barbell Flat Bench Press', weight: '110 kg', date: '28 Oct 2024' },
-    { lift: 'Barbell Back Squat', weight: '145 kg', date: '15 Oct 2024' },
-    { lift: 'Conventional Deadlift', weight: '185 kg', date: '04 Nov 2024' },
-    { lift: 'Standing Military Press', weight: '65 kg', date: '22 Sep 2024' },
+    { lift: 'Barbell Flat Bench Press', weight: '110 kg', date: rebaseText('28 Oct 2024') },
+    { lift: 'Barbell Back Squat', weight: '145 kg', date: rebaseText('15 Oct 2024') },
+    { lift: 'Conventional Deadlift', weight: '185 kg', date: rebaseText('04 Nov 2024') },
+    { lift: 'Standing Military Press', weight: '65 kg', date: rebaseText('22 Sep 2024') },
   ]);
 
   const [newLogWeight, setNewLogWeight] = useState('');

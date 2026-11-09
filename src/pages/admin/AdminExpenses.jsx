@@ -4,6 +4,7 @@ import DataTable from '../../components/common/DataTable';
 import Badge from '../../components/common/Badge';
 import Modal from '../../components/common/Modal';
 import { Receipt, Plus, TrendingDown, DollarSign } from 'lucide-react';
+import { isoFromToday, currentMonthLabel } from '../../utils/dates';
 
 export default function AdminExpenses() {
   const { expenses, setExpenses, expenseCategories, showToast } = useGym();
@@ -15,7 +16,7 @@ export default function AdminExpenses() {
     amount: 15000,
     paidTo: 'Vendor',
     status: 'Paid',
-    dueDate: '2024-11-20'
+    dueDate: isoFromToday(11)
   });
 
   const totalMonthlyExpense = expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
@@ -101,7 +102,7 @@ export default function AdminExpenses() {
           <div className="font-heading text-3xl font-bold text-[#E03131] tabular-nums mt-0.5">
             ₹{totalMonthlyExpense.toLocaleString('en-IN')}
           </div>
-          <span className="text-[11px] text-[#666666]">November 2024</span>
+          <span className="text-[11px] text-[#666666]">{currentMonthLabel(true)}</span>
         </div>
         <div className="p-4 rounded-lg border border-[#2A2A2A] bg-[#161616]">
           <span className="text-[10px] uppercase text-[#9A9A9A] font-semibold">Gross Monthly Revenue</span>

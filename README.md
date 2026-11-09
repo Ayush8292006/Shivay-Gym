@@ -130,10 +130,28 @@ npm run build
 
 ---
 
-## 🔌 Production Integration Note
+## 📲 WhatsApp Notifications
 
-For real-world deployment:
-1. **WhatsApp Business API**: Replace `triggerSendMessage()` in `GymContext.jsx` with your Meta Cloud API endpoint (`https://graph.facebook.com/v18.0/...`) or Gupshup/Twilio webhook.
-2. **SMS Gateway**: Route through MSG91 / Textlocal using DLT-approved template IDs.
-3. **Cron Jobs**: Run a serverless cron job (AWS EventBridge or node-cron) daily at 06:00 AM IST to invoke the morning motivation quote rotation and 7-day expiry scan.
+Every reminder, offer, good morning message and festival wish can go to the member's WhatsApp.
+Choose the mode in **Admin → Gym Settings → WhatsApp Delivery**:
 
+| Mode | Setup | How it works |
+|---|---|---|
+| **Manual** (default) | None | Each message opens WhatsApp (phone / Desktop / Web) with the number and text filled in, and you press Send. Bulk sends open a step-by-step queue. |
+| **Automatic** | Run `/server` + Meta WhatsApp Cloud API | Messages are sent by the server. Daily automations (06:00 good morning, expiry reminders, birthdays, festival wishes…) run on schedule even when the app is closed. Sent / delivered / read ticks show in the Message Log. |
+
+**Test mode** is ON by default: every message goes to *your* number, because the demo members have made-up numbers. Turn it off only after real member numbers are entered.
+
+```bash
+# terminal 1 – the app
+npm run dev
+# terminal 2 – the WhatsApp server (Node 18+, no install needed)
+cd server && cp .env.example .env && node index.js
+```
+
+Full Meta setup, template samples and the go-live checklist: **[server/README.md](server/README.md)**.
+
+Members control it themselves in **Member App → Notifications**: WhatsApp on/off, their number, and English/Hindi.
+
+### Dates always current
+The demo data is re-dated on load (`src/utils/dates.js`), so expiries, "expiring in 7 days", last visits, payments and charts are always relative to today. Member status (Active / Expiring Soon / Expired) is calculated from the expiry date. The festival calendar covers Nov 2026 – Oct 2027. Lunar festival dates are marked and can be edited from Automations → Festival Calendar.
